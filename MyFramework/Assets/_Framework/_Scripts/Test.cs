@@ -8,26 +8,20 @@ using UnityEngine;
 
 public class Test : MonoBehaviour
 {
+    SocketInfo socketInfo;
 
     private void Start()
     {
 
-        SocketInfo socketInfo;
         socketInfo.host = "127.0.0.1";
-        socketInfo.port = 6677;
+        socketInfo.port = 8899;
         socketInfo.type = E_SocketType.Tcp;
 
 
-        SocketManager.Instance.CreateSocket(socketInfo);
-        
-        EventsManager.Instance.Addlistener<string>(E_Events.ReceiveSocket, Receive);
         MonoManager.Instance.AddEndlistener(Loose);
-        SocketManager.Instance.SendMsg(socketInfo,"123123");
-
-
-
-
-
+        EventsManager.Instance.Addlistener<string>(E_Events.ReceiveSocket, Receive);
+        //SocketManager.Instance.CreateSocket(socketInfo);
+        //SocketManager.Instance.SendMsg(socketInfo, "123123");
 
     }
 
@@ -41,7 +35,7 @@ public class Test : MonoBehaviour
 
     public void Loose()
     {
-        //SocketManager.Instance.StopConnection();
+        //SocketManager.Instance.CloseSocket(socketInfo);
     }
 
 

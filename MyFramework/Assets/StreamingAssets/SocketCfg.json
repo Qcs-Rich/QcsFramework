@@ -1,0 +1,16 @@
+{
+    "SocketList": [
+        {
+            "code": 0,
+            "type": "tcp",
+            "host": "127.0.0.1",
+            "port": 6677
+        },
+        {
+            "code": 1,
+            "type": "tcp",
+            "host": "127.0.0.1",
+            "port": 6688
+        }
+    ]
+}

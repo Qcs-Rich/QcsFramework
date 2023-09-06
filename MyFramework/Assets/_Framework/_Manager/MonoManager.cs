@@ -282,6 +282,7 @@ public class MonoManager : SingletonBase<MonoManager>
                     playEditerEvent?.Invoke();
                     break;
                 case PlayModeStateChange.ExitingPlayMode://Í£Ö¹²¥·ÅÁ¢¼´¼àÌý
+                    Debug.Log("EditorEndPlay");
                     endEditorEvent?.Invoke();
                     break;
             }

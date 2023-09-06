@@ -11,6 +11,18 @@ using UnityEngine;
 public class AppController : SingletonMonoBase<AppController>
 {
 
+    public void Init()
+    {
+
+
+        //初始化各个管理器
+        SocketManager.Instance.Init();
+
+        
+
+
+    }
+
 
 
 }

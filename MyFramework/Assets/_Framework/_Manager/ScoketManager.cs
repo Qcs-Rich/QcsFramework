@@ -4,128 +4,201 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
-using Unity.VisualScripting;
 using UnityEngine;
 
 
 
-public class SocketManager : SingletonBase<SocketManager>
+
+/// <summary>
+/// Scoket信息存储
+/// </summary>
+public struct SocketInfo
+{
+    public E_SocketType type;
+    public string host;
+    public int port;
+}
+
+public class SocketManager:SingletonMonoBase<SocketManager>
 {
 
-    private Dictionary<SocketInfo, SocketExecuter> socketDic = new Dictionary<SocketInfo, SocketExecuter>();
 
+    public Dictionary<int, SocketInfo> sockets = new Dictionary<int, SocketInfo>();
+    private Dictionary<SocketInfo, SocketExecutor> socketDic = new Dictionary<SocketInfo, SocketExecutor>();
+    
+
+    public void Init()
+    {
+
+    }
+
+    /// <summary>
+    /// 创建socket
+    /// </summary>
+    /// <param name="info"></param>
     public void CreateSocket(SocketInfo info)
     {
-        SocketExecuter socket;
-        if (socketDic.ContainsKey(info))
+        if (!socketDic.ContainsKey(info))
         {
-            socket = socketDic[info];
+            GameObject socketObj = new GameObject(info.host + "_" + info.port);
+            socketObj.transform.parent = transform;
+            SocketExecutor executor = socketObj.AddComponent<SocketExecutor>();
+            socketDic.Add(info, executor);
+            executor.InitSocket(info);
         }
         else
         {
-            socket = new SocketExecuter();
+            Debug.Log("已经存在该Socetk，无需重新创建");
         }
-        socket.StartConnection(info);
     }
 
-    public void CloseSocket(SocketInfo info)
+    /// <summary>
+    /// 发送信息
+    /// </summary>
+    /// <param name="info"></param>
+    /// <param name="msg"></param>
+    public void Send(SocketInfo info,string msg)
     {
         if (socketDic.ContainsKey(info))
         {
-            socketDic[info].StopConnection();
+            socketDic[info].SendData("msg");
+        }
+        else
+        {
+            Debug.Log("ip端口下没有绑定的socket");
         }
     }
 
-    public void SendMsg(SocketInfo info, string msg)
+    /// <summary>
+    /// 释放socket
+    /// </summary>
+    /// <param name="info"></param>
+    public void CloseSocet(SocketInfo info)
     {
         if (socketDic.ContainsKey(info))
         {
-            socketDic[info].Send(msg);
+            GameObject.Destroy(socketDic[info].gameObject);
+            socketDic.Remove(info);
         }
     }
 
 
-
-
-
-
-
-
-    public class SocketExecuter
+    /// <summary>
+    /// 释放所有socket
+    /// </summary>
+    /// <param name="info"></param>
+    public void CloseAllSocet(SocketInfo info)
     {
-
-        private Socket socket;
-        private Thread receiveThread;
-        private readonly object receivedDataLock = new object();
-        private string receivedData;
-
-        public void StartConnection(SocketInfo info)
+        if (socketDic.ContainsKey(info))
         {
+            foreach (Transform executor in transform)
+            {
+                Destroy(executor.gameObject);
+            }
+            socketDic.Clear();
+        }
+    }
+}
 
-            IPAddress ipAddress = IPAddress.Parse(info.host);
-            IPEndPoint remoteEP = new IPEndPoint(ipAddress, info.port);
 
-            switch (info.type)
+
+public class SocketExecutor : MonoBehaviour
+{
+
+    private Thread socketThread, receiveThread;
+    private Socket socket;
+    SocketInfo socketInfo;
+
+    public void InitSocket(SocketInfo info)
+    {
+        socketInfo = info;
+        socketThread = new Thread(StartSocket);
+        socketThread.IsBackground = true;
+        socketThread.Start();
+    }
+
+    void StartSocket()
+    {
+        try
+        {
+            switch (socketInfo.type)
             {
                 case E_SocketType.Tcp:
-                    socket = new Socket(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-                    socket.Connect(remoteEP);
+                    socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp);
+                    socket.Connect(new IPEndPoint(IPAddress.Parse(socketInfo.host), socketInfo.port));
                     break;
                 case E_SocketType.Udp:
-                    socket = new Socket(ipAddress.AddressFamily, SocketType.Dgram, ProtocolType.Udp);
-                    socket.Connect(remoteEP);
+                    socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, System.Net.Sockets.ProtocolType.Udp);
                     break;
             }
-
-            receiveThread = new Thread(Receive);
+            Debug.Log("Socket connected");
+            receiveThread = new Thread(ReceiveData);
             receiveThread.IsBackground = true;
             receiveThread.Start();
         }
-
-        public void StopConnection()
+        catch (Exception e)
         {
-            receiveThread?.Abort();
-            socket?.Close();
+            Debug.LogError("Socket error: " + e.Message);
         }
+    }
 
-        private void Receive()
-        {
-            while (true)
-            {
-                try
-                {
-                    byte[] buffer = new byte[1024];
-                    int bytesReceived = socket.Receive(buffer);
-                    string receivedMessage = Encoding.UTF8.GetString(buffer, 0, bytesReceived);
-
-                    lock (receivedDataLock)
-                    {
-                        receivedData = receivedMessage;
-                        if (receivedData != null)
-                        {
-                            EventsManager.Instance.Dispatch<string>(E_Events.ReceiveSocket, receivedData);
-                            receivedData = null;
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogError($"Error: {ex.Message}");
-                }
-            }
-        }
-
-        public void Send(string message)
+    void ReceiveData()
+    {
+        while (socket != null && socket.Connected)
         {
             try
             {
-                byte[] msg = Encoding.UTF8.GetBytes(message);
-                socket.Send(msg);
+                byte[] buffer = new byte[1024];
+                int receivedBytes = socket.Receive(buffer);
+                if (receivedBytes > 0)
+                {
+                    string receivedMessage = Encoding.UTF8.GetString(buffer, 0, receivedBytes);
+                    //Debug.Log("Received message: " + receivedMessage);
+                    EventsManager.Instance.Dispatch<string>(E_Events.ReceiveSocket,receivedMessage);
+                }
             }
-            catch (Exception ex)
+            catch (Exception e)
             {
-                Debug.LogError($"Error: {ex.Message}");
+                Debug.LogError("Receive error: " + e.Message);
             }
+        }
+    }
+
+    public void SendData(string message)
+    {
+        if (socket != null && socket.Connected)
+        {
+            try
+            {
+                byte[] data = Encoding.UTF8.GetBytes(message);
+                socket.Send(data);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError("Send error: " + e.Message);
+            }
+        }
+    }
+
+
+    /// <summary>
+    /// 如果不用对象池来创建
+    /// </summary>
+    void OnDestroy()
+    {
+        if (socket != null)
+        {
+            socket.Close();
+        }
+
+        if (socketThread != null)
+        {
+            socketThread.Abort();
+        }
+
+        if (receiveThread != null)
+        {
+            receiveThread.Abort();
         }
     }
 }
